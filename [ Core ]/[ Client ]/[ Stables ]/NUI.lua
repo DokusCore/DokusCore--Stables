@@ -33,6 +33,26 @@ RegisterNUICallback('BreedMyHorse', function(Data)
 end)
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
+RegisterNUICallback('RescueMyHorse', function(Data)
+  NoteObjective("System", 'Your horse is now set inactive', 'Horn', 5000)
+  local Sync = TCTCC('DokusCore:Sync:Get:UserData')
+  DeleteEntity(Sync.HorseID) MyActiveHorse = nil
+  local Index = { Sync.SteamID, Sync.CharID, Sync.HorseName, false }
+  TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'InUse', Index })
+  TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'IsStored', Index })
+  TriggerEvent('DokusCore:Sync:Set:UserData', { 'HorseActive', { false } })
+  TriggerEvent('DokusCore:Sync:Set:UserData', { 'HorseID', { nil } })
+  TriggerEvent('DokusCore:Sync:Set:UserData', { 'HorseName', { nil } })
+  NoteNPCTalk(MSG("NPCName").MSG, "We're going to search for your horse, this could take some time", false, 7000)
+  Wait((1 * 60) * 1000)
+  NoteObjective("System", 'Your horse is rescued and back at the stable', 'Horn', 10000)
+  local Index = { Sync.SteamID, Sync.CharID, Sync.HorseName, false }
+  TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'InUse', Index })
+  local Index = { Sync.SteamID, Sync.CharID, Sync.HorseName, true }
+  TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'IsStored', Index })
+end)
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 RegisterNUICallback("CloseStable", function()
   ExitMenu()
   ShowPrompts = true
@@ -47,7 +67,7 @@ RegisterNUICallback("loadHorse", function(Data)
   WaitLoadModel(Model)
 
   for k,v in pairs(_Stables.HorsePos) do
-    if (Low(Loc) == (Low(v.ID))) then
+    if (Low(Area()) == (Low(v.ID))) then
       if (IsHorseLoaded()) then DeleteEntity(HorseLoaded) end
       HorseLoaded = CreatePed(Model, v.Coords[1], v.Coords[2], (v.Coords[3] - 0.98), v.Heading, false, 0)
       Citizen.InvokeNative(0x283978A15512B2FE, HorseLoaded, true)
@@ -77,7 +97,7 @@ RegisterNUICallback("SelectHorse", function(Data)
 
   -- Get the position that the horse needs to be displayed
   for k,v in pairs(_Stables.HorsePos) do
-    if (Low(Loc) == (Low(v.ID))) then
+    if (Low(Area()) == (Low(v.ID))) then
       if (IsHorseLoaded()) then DeleteEntity(HorseLoaded) end
       local NewHorse = SpawnHorse(Model, v.Coords, v.Heading)
       HorseLoaded = NewHorse
@@ -108,7 +128,6 @@ end)
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 RegisterNUICallback('TakeOutHorse', function(Data)
-  ExitMenu()
   local NPCTakesHorse = false
   local Name = Data.Name
   local Sync = TCTCC('DokusCore:Sync:Get:UserData')
@@ -116,9 +135,20 @@ RegisterNUICallback('TakeOutHorse', function(Data)
   local Horse = TSC('DokusCore:Core:DBGet:Stables', Index).Result[1]
   local xName, xModel = Horse.Name, Horse.Model
 
+  -- Cancel if horse is already in use.
+  if (not (Horse.IsStored) or (Horse.IsStored == 0)) then
+    if ((Horse.InUse) or (Horse.InUse == 1)) then
+      NoteNPCTalk(MSG('NPCName').MSG, 'Your horse is already in use!', false, 5000)
+      return
+    end
+  end
+
+  ExitMenu()
+
+
   -- Check if the NPC will take the horse or not
   for k,v in pairs(_Stables.NPCs) do
-    if (Low(Loc) == (Low(v.ID))) then
+    if (Low(Area()) == (Low(v.ID))) then
       NPCTakesHorse = v.NPCTakesHorse
     end
   end
@@ -126,15 +156,22 @@ RegisterNUICallback('TakeOutHorse', function(Data)
   -- Spawn the horse
   local ID, Coords, Heading = nil, nil, nil
   for k,v in pairs(_Stables.HorseSpawn) do
-    if (Low(Loc) == (Low(v.ID))) then
+    if (Low(Area()) == (Low(v.ID))) then
       ID, Coords, Heading = v.ID, v.Coords, v.Heading
       WaitLoadModel(xModel)
-      MyActiveHorse = CreatePed(xModel, Coords, Heading, false, 0)
+      MyActiveHorse = CreatePed(xModel, Coords, Heading, true, 0)
+      TriggerEvent('DokusCore:Sync:Set:UserData', { 'HorseID', { MyActiveHorse } })
+      TriggerEvent('DokusCore:Sync:Set:UserData', { 'HorseName', { xName } })
+      TriggerEvent('DokusCore:Sync:Set:UserData', { 'HorseActive', { true } })
       Citizen.InvokeNative(0x283978A15512B2FE, MyActiveHorse, true)
       Citizen.InvokeNative(0x58A850EAEE20FAA3, MyActiveHorse)
       Citizen.InvokeNative(0xB8B6430EAD2D2437, MyActiveHorse, GetHashKey("PLAYER_HORSE"))
       Citizen.InvokeNative(0x4DB9D03AC4E1FA84, MyActiveHorse, -1, -1, 0)
       SetVehicleHasBeenOwnedByPlayer(MyActiveHorse, true)
+      local Index = { Sync.SteamID, Sync.CharID, xName, true }
+      TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'InUse', Index })
+      local Index = { Sync.SteamID, Sync.CharID, xName, false }
+      TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'IsStored', Index })
     end
   end
 
@@ -145,6 +182,7 @@ RegisterNUICallback('TakeOutHorse', function(Data)
     TriggerEvent('DokusCore:Stables:ShowPrompts')
   else
     -- Walk the NPC to the horse
+    NPCFetchingHorse = true
     SetFreeze(UseThisNPC, false)
     NoteNPCTalk(MSG("NPCName").MSG, MSG("FetchHorse").MSG, false, Floor(MSG("FetchHorse").Time * 1000))
     TaskGoToCoordAnyMeans(UseThisNPC, Coords, 1.5, 0, 0, 786603, 0xbf800000)
@@ -154,7 +192,7 @@ RegisterNUICallback('TakeOutHorse', function(Data)
 
     -- Mount the NPC on the horse.
     for x, c in pairs(_Stables.HorseSpawn) do
-      if (Low(Loc) == (Low(c.ID))) then
+      if (Low(Area()) == (Low(c.ID))) then
         TaskMountAnimal(UseThisNPC, MyActiveHorse, 15000, -1, 1.0, 1, 0, 0)
         Wait(4000)
       end
@@ -168,13 +206,14 @@ RegisterNUICallback('TakeOutHorse', function(Data)
 
     -- Let the NPC walk back to its starting position
     for k,v in pairs(_Stables.NPCs) do
-      if (Low(Loc) == (Low(v.ID))) then
+      if (Low(Area()) == (Low(v.ID))) then
         TaskGoToCoordAnyMeans(UseThisNPC, v.Coords, 1.5, 0, 0, 786603, 0xbf800000)
         WaitForNPCToReturn(v.Coords) Wait(3000)
         SetPedDesiredHeading(UseThisNPC, v.Heading)
         ExitMenu()
         ResetPrompts()
         NearNPC, StoreInUse = true, false
+        NPCFetchingHorse = false
       end
     end
   end

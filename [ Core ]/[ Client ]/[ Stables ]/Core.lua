@@ -3,46 +3,44 @@
 --------------------------------------------------------------------------------
 ----------------------- I feel a disturbance in the force ----------------------
 --------------------------------------------------------------------------------
-function FrameReady()
-  local Data = TCTCC('DokuCore:Sync:Get:CoreData')
-  return Data.FrameReady
-end
+HorseDecoys = {}
+NPCs, Blips = {}, {}
+StoreInUse, UseThisNPC = false, nil
+HorseLoaded, MyActiveHorse = nil, nil
+NPCFetchingHorse = false
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
-function UserInGame()
-  local Data = TCTCC('DokusCore:Sync:Get:UserData')
-  return Data.UserInGame
-end
+ShowPrompts    = false
+Stables_Menu   = nil
+Stables_Store  = nil
+pGroup_Stables = GetRandomIntInRange(0, 0xffffff)
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
-function Area()
-  local Data = TCTCC('DokusCore:Sync:Get:UserData')
-  return Data.Area
-end
+-- Set the blips on the map
 --------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-function MSG(Obj)
-  local Lang = TCTCC('DokusCore:Sync:Get:UserData').Language
-  return _("Stables", Obj, Lang)
-end
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-function SYS(Obj)
-  local Lang = TCTCC('DokusCore:Sync:Get:UserData').Language
-  return _("System", Obj, Lang)
-end
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-function ErrorMsg(Type)
-  if (Type == "NoHorseName") then
-    NoteNPCTalk(MSG("NPCName").MSG, MSG("NoHorseName").MSG, true, Floor(MSG('NoHorseName').Time * 1000))
-    SetNuiFocus(true, true)
-    SendNUIMessage({ Customize = false })
-    SendNUIMessage({ Action = "Show" })
-    SendNUIMessage({ Action = "Store", DataShop = getShopData() })
-    SendNUIMessage({ DataHorse = Horses }) Wait(100)
+CreateThread(function()
+  if (_Modules.Stables) then
+    while (not FrameReady()) do Wait(1000) end
+    while (not UserInGame()) do Wait(1000) end
+    for k,v in pairs(_Stables.NPCs) do
+      Tabi(Blips, SetBlip(v.Coords, 1938782895, 1.0, MSG("Name").MSG))
+    end
   end
-end
+end)
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Sync players current active horse
+--------------------------------------------------------------------------------
+CreateThread(function()
+  if (_Modules.Stables) then
+    while (not FrameReady()) do Wait(1000) end
+    while (not UserInGame()) do Wait(1000) end
+    local Sync = TCTCC('DokusCore:Sync:Get:UserData')
+    MyActiveHorse = Sync.HorseID
+  end
+end)
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 
@@ -60,11 +58,6 @@ end
 
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
-
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
-
-
 
 
 --------------------------------------------------------------------------------

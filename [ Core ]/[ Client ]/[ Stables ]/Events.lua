@@ -7,8 +7,18 @@ RegisterNetEvent('DokusCore:Stables:SayHello', function(Data)
   if (not (AtStable)) then
     AtStable = true
     Loc = Low(Data.City)
+
+    -- Spawn the NPC
+    for k,v in pairs(_Stables.NPCs) do
+      if (Low(Area()) == Low(v.ID)) then
+        Tabi(NPCs, { City = v.ID, NPC = SpawnNPC(v.Hash, v.Coords, v.Heading) })
+      end
+    end
+
     SetNPCToUse()
     SetHorseDecoys()
+
+    -- Send hello message
     for k,v in pairs(_Stables.Dialogs) do
       if (v.Welcome) then
         local Txt = RandomDialog(MSG("EnterStore"))
@@ -22,17 +32,26 @@ end)
 --------------------------------------------------------------------------------
 RegisterNetEvent('DokusCore:Stables:SayGoodbye', function(Meta)
   if (AtStable) then
-    AtStable = false
-    UseThisNPC = nil
-    StoreInUse = false
-    DelHorseDecoys()
-    ResetPrompts()
-    ShowPrompts = false
     for k,v in pairs(_Stables.Dialogs) do
       if (v.Welcome) then
         local Txt = RandomDialog(MSG("ExitStore"))
         local Random = Txt[math.random(#Txt)]
         NoteNPCTalk(MSG("NPCName").MSG, Random.MSG, true, Floor(Random.Time * 1000))
+      end
+    end
+
+    -- Remove the NPC from the area
+    for k,v in pairs(_Stables.NPCs) do
+      if (Low(Area()) == Low(v.ID)) then
+        while (NPCFetchingHorse) do Wait(1000) end
+        DelHorseDecoys()
+        ResetPrompts()
+        DeleteEntity(NPCs[k].NPC)
+        table.remove(NPCs, k)
+        UseThisNPC = nil
+        AtStable = false
+        StoreInUse = false
+        ShowPrompts = false
       end
     end
   end
@@ -65,7 +84,7 @@ RegisterNetEvent('DokusCore:Stables:OpenMenu', function()
 
   -- For each horse insert into table.
   for k,v in pairs(User.Result) do
-    if (Low(Loc) == (Low(v.Stabled))) then
+    if (Low(Area()) == (Low(v.Stabled))) then
       Tabi(Horses, v)
     end
   end
@@ -107,7 +126,7 @@ RegisterNetEvent('DokusCore:Stables:StoreHorse', function()
 
   -- Check if the NPC will take the horse or not
   for k,v in pairs(_Stables.NPCs) do
-    if (Low(Loc) == (Low(v.ID))) then
+    if (Low(Area()) == (Low(v.ID))) then
       NPCTakesHorse = v.NPCTakesHorse
     end
   end
@@ -118,21 +137,28 @@ RegisterNetEvent('DokusCore:Stables:StoreHorse', function()
     ExitMenu() ShowPrompts = true
     TriggerEvent('DokusCore:Stables:ShowPrompts')
   else
+    NPCFetchingHorse = true
     SetFreeze(UseThisNPC, false)
     TaskMountAnimal(UseThisNPC, MyActiveHorse, 20000, -1, 1.0, 1, 0, 0)
     while (not (IsPedOnMount(UseThisNPC))) do Wait(500) end
 
     for k,v in pairs(_Stables.HorseDrop) do
-      if (Low(Loc) == (Low(v.ID))) then
+      if (Low(Area()) == (Low(v.ID))) then
         TaskGoStraightToCoord(UseThisNPC, v.Coords, 1.5, 10000, 1, 1, 1)
         WaitToStoreTheHorse(v.Coords)
         Citizen.InvokeNative(0x5337B721C51883A9, UseThisNPC, 1, 1)
       end
     end
 
+    local Sync = TCTCC('DokusCore:Sync:Get:UserData')
+    local Index = { Sync.SteamID, Sync.CharID, Sync.HorseName, false }
+    TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'InUse', Index })
+    local Index = { Sync.SteamID, Sync.CharID, Sync.HorseName, true }
+    TriggerServerEvent('DokusCore:Core:DBSet:Stables', { 'User', 'Single', 'IsStored', Index })
+
     -- Let the NPC walk back to its starting position
     for k,v in pairs(_Stables.NPCs) do
-      if (Low(Loc) == (Low(v.ID))) then
+      if (Low(Area()) == (Low(v.ID))) then
         TaskGoToCoordAnyMeans(UseThisNPC, v.Coords, 1.5, 0, 0, 786603, 0xbf800000)
         WaitForNPCToReturn(v.Coords) Wait(3000)
         DeleteEntity(MyActiveHorse) MyActiveHorse = nil
@@ -142,6 +168,7 @@ RegisterNetEvent('DokusCore:Stables:StoreHorse', function()
         NearNPC, StoreInUse = true, false
         ShowPrompts = true
         TriggerEvent('DokusCore:Stables:ShowPrompts')
+        NPCFetchingHorse = false
       end
     end
   end
@@ -153,9 +180,8 @@ AddEventHandler('onResourceStop', function(Name)
   for k,v in pairs(NPCs) do DeleteEntity(v.NPC) end
   for k,v in pairs(Blips) do RemoveBlip(v) end
   for k,v in pairs(HorseDecoys) do DeleteEntity(v) end
-  if (MyActiveHorse ~= nil) then DeleteEntity(MyActiveHorse) end
-  if (IsHorseLoaded()) then DeleteEntity(HorseLoaded) end
   RenderScriptCams(false, false, 1, true, true)
+  if (IsFollowing) then ClearPedTasksImmediately(MyActiveHorse) end
   if (PlayerCam ~= nil) then SetCamActive(PlayerCam, false) DestroyCam(PlayerCam) end
   if (StableCam ~= nil) then SetCamActive(StableCam, false) DestroyCam(StableCam) end
 end)
